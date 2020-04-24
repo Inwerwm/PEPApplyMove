@@ -16,7 +16,7 @@ namespace ApplyMove
         {
             get
             {
-                return "プラグイン名";
+                return "頂点移動量を転写";
             }
         }
 
@@ -32,7 +32,7 @@ namespace ApplyMove
         {
             get
             {
-                return "プラグイン説明";
+                return "異なるモデルから頂点の移動量を転写する";
             }
         }
 
@@ -41,7 +41,7 @@ namespace ApplyMove
             get
             {
                 // boot時実行, プラグインメニューへの登録, メニュー登録名
-                return new PEPluginOption(false, true, "プラグイン名");
+                return new PEPluginOption(false, true, "頂点移動量を転写");
             }
         }
 
@@ -73,6 +73,13 @@ namespace ApplyMove
                 ctrlForm.Close();
                 ctrlForm = null;
             }
+        }
+
+        public class Correspond
+        {
+            public int preMoveVertexID { get; set; }
+            public int postMoveVertexID { get; set; }
+            public PEPlugin.SDX.V3 offset { get; set; }
         }
 
         CtrlForm ctrlForm;
