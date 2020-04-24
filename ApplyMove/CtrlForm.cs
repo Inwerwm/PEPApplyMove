@@ -1,5 +1,8 @@
-﻿using PEPlugin;
+﻿using KdTree;
+using KdTree.Math;
+using PEPlugin;
 using PEPlugin.Pmx;
+using PEPlugin.SDX;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -152,8 +155,66 @@ namespace ApplyMove
             }
 
             //移動前材質と移動後材質で面インデックスを元に移動量を取得
+            if(SourceMaterialPreMove.Faces.Count != SourceMaterialPostMove.Faces.Count)
+            {
+                MessageBox.Show("移動前材質の面数と移動後材質の面数が異なるため処理に失敗しました。");
+                return;
+            }
+
+            var faceCount = SourceMaterialPostMove.Faces.Count;
+            var preFaces = SourceMaterialPreMove.Faces;
+            var postFaces = SourceMaterialPostMove.Faces;
+            var OffsetMap = new Dictionary<float[], V3>();
+            var tree = new KdTree<float, int>(3,new FloatMath());
+            for (int i = 0; i < faceCount; i++)
+            {
+                // <位置,移動量>マップを作成
+                if (!OffsetMap.ContainsKey(preFaces[i].Vertex1.Position.ToArray()))
+                    OffsetMap.Add(preFaces[i].Vertex1.Position.ToArray(), postFaces[i].Vertex1.Position - preFaces[i].Vertex1.Position);
+                if (!OffsetMap.ContainsKey(preFaces[i].Vertex2.Position.ToArray()))
+                    OffsetMap.Add(preFaces[i].Vertex2.Position.ToArray(), postFaces[i].Vertex2.Position - preFaces[i].Vertex2.Position);
+                if (!OffsetMap.ContainsKey(preFaces[i].Vertex3.Position.ToArray()))
+                    OffsetMap.Add(preFaces[i].Vertex3.Position.ToArray(), postFaces[i].Vertex3.Position - preFaces[i].Vertex3.Position);
+
+                // KdTreeに追加
+                tree.Add(preFaces[i].Vertex1.Position.ToArray(), faceCount * 3);
+                tree.Add(preFaces[i].Vertex2.Position.ToArray(), faceCount * 3 + 1);
+                tree.Add(preFaces[i].Vertex3.Position.ToArray(), faceCount * 3 + 2);
+            }
+
+            
+            var Vertices = new List<IPXVertex>();
+            foreach (var f in TargetMaterial.Faces)
+            {
+                Vertices.Add(f.Vertex1);
+                Vertices.Add(f.Vertex2);
+                Vertices.Add(f.Vertex3);
+            }
+            Vertices.Distinct();
+
             //移動前材質と移動量適用先材質で距離を元に対応関係を取得
             //移動量適用先材質の頂点を対応関係から移動
+            foreach (var v in Vertices)
+            {
+                var closest = tree.GetNearestNeighbours(v.Position.ToArray(), 1);
+                v.Position += OffsetMap[closest[0].Point];
+            }
+
+            Utility.Update(args.Host.Connector, pmx, PmxUpdateObject.Vertex);
+            MessageBox.Show("完了");
+        }
+    }
+
+    static class Extentions
+    {
+        public static float[] ToArray(this V3 v)
+        {
+            return new float[] { v.X, v.Y, v.Z };
+        }
+
+        public static V3 ToV3(this float[] a)
+        {
+            return new V3(a[0], a[1], a[2]);
         }
     }
 }
