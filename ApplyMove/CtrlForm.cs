@@ -5,12 +5,8 @@ using PEPlugin.Pmx;
 using PEPlugin.SDX;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Data;
-using System.Drawing;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace ApplyMove
@@ -31,7 +27,8 @@ namespace ApplyMove
                 pmxSourceMaterialPreMove = value;
                 textBoxSourceMaterialPreMovePmxPath.Text = value == null ? "" : value.FilePath;
                 comboBoxSourceMaterialPreMove.Items.Clear();
-                comboBoxSourceMaterialPreMove.Items.AddRange(pmxSourceMaterialPreMove.Material.Select(m => m.Name).ToArray());
+                if (value != null)
+                    comboBoxSourceMaterialPreMove.Items.AddRange(pmxSourceMaterialPreMove.Material.Select(m => m.Name).ToArray());
             }
         }
         IPXMaterial TargetMaterial
@@ -105,7 +102,7 @@ namespace ApplyMove
         private void buttonOpenSourceMaterialPreMove_Click(object sender, EventArgs e)
         {
             OpenFileDialog ofd = new OpenFileDialog();
-            ofd.Filter = "PMXファイル(*.pmx)|*.pmx;すべてのファイル(*.*)|*.*";
+            ofd.Filter = "PMXファイル(*.pmx)|*.pmx|すべてのファイル(*.*)|*.*";
             ofd.Title = "移動前材質を含むPMXファイルを選択してください。";
             ofd.RestoreDirectory = true;
             if (ofd.ShowDialog() == DialogResult.OK)
@@ -114,6 +111,8 @@ namespace ApplyMove
                 var m = args.Host.Builder.Pmx.Pmx();
                 m.FromFile(ofd.FileName);
                 PmxSourceMaterialPreMove = m;
+                SourceMaterialPreMove = null;
+                comboBoxSourceMaterialPreMove.SelectedIndex = -1;
             }
         }
 
@@ -136,26 +135,26 @@ namespace ApplyMove
 
         private void buttonRun_Click(object sender, EventArgs e)
         {
-            if(TargetMaterial == null)
+            if (TargetMaterial == null)
             {
                 MessageBox.Show("移動量適用先材質を選択してください。");
                 return;
             }
 
-            if(SourceMaterialPostMove == null)
+            if (SourceMaterialPostMove == null)
             {
                 MessageBox.Show("移動後材質を選択してください。");
                 return;
             }
 
-            if(SourceMaterialPreMove == null)
+            if (SourceMaterialPreMove == null)
             {
                 MessageBox.Show("移動前材質を選択してください。");
                 return;
             }
 
             //移動前材質と移動後材質で面インデックスを元に移動量を取得
-            if(SourceMaterialPreMove.Faces.Count != SourceMaterialPostMove.Faces.Count)
+            if (SourceMaterialPreMove.Faces.Count != SourceMaterialPostMove.Faces.Count)
             {
                 MessageBox.Show("移動前材質の面数と移動後材質の面数が異なるため処理に失敗しました。");
                 return;
@@ -164,25 +163,47 @@ namespace ApplyMove
             var faceCount = SourceMaterialPostMove.Faces.Count;
             var preFaces = SourceMaterialPreMove.Faces;
             var postFaces = SourceMaterialPostMove.Faces;
-            var OffsetMap = new Dictionary<float[], V3>();
-            var tree = new KdTree<float, int>(3,new FloatMath());
+            var OffsetMap = new Dictionary<(float x, float y, float z), V3>();
+            var tree = new KdTree<float, int>(3, new FloatMath(),AddDuplicateBehavior.Stock);
+            var failedFaceIndices = new List<int>();
+            for (int i = 0; i < faceCount; i++)
+            {
+                // KdTreeに追加
+                tree.Add(preFaces[i].Vertex1.Position.ToArray(), faceCount);
+                tree.Add(preFaces[i].Vertex2.Position.ToArray(), faceCount);
+                tree.Add(preFaces[i].Vertex3.Position.ToArray(), faceCount);
+            }
             for (int i = 0; i < faceCount; i++)
             {
                 // <位置,移動量>マップを作成
-                if (!OffsetMap.ContainsKey(preFaces[i].Vertex1.Position.ToArray()))
-                    OffsetMap.Add(preFaces[i].Vertex1.Position.ToArray(), postFaces[i].Vertex1.Position - preFaces[i].Vertex1.Position);
-                if (!OffsetMap.ContainsKey(preFaces[i].Vertex2.Position.ToArray()))
-                    OffsetMap.Add(preFaces[i].Vertex2.Position.ToArray(), postFaces[i].Vertex2.Position - preFaces[i].Vertex2.Position);
-                if (!OffsetMap.ContainsKey(preFaces[i].Vertex3.Position.ToArray()))
-                    OffsetMap.Add(preFaces[i].Vertex3.Position.ToArray(), postFaces[i].Vertex3.Position - preFaces[i].Vertex3.Position);
+                var prePos1 = preFaces[i].Vertex1.Position.ToTuple();
+                var prePos2 = preFaces[i].Vertex2.Position.ToTuple();
+                var prePos3 = preFaces[i].Vertex3.Position.ToTuple();
 
-                // KdTreeに追加
-                tree.Add(preFaces[i].Vertex1.Position.ToArray(), faceCount * 3);
-                tree.Add(preFaces[i].Vertex2.Position.ToArray(), faceCount * 3 + 1);
-                tree.Add(preFaces[i].Vertex3.Position.ToArray(), faceCount * 3 + 2);
+                // 移動後材質の同じ面に含まれる点について
+                // 3つすべてで最近傍点のValueが一致している場合、同じ面に含まれていることを意味する
+                var n1 = tree.GetNearestNeighbours(postFaces[i].Vertex1.Position.ToArray(), 1)[0];
+                var n2 = tree.GetNearestNeighbours(postFaces[i].Vertex2.Position.ToArray(), 1)[0];
+                var n3 = tree.GetNearestNeighbours(postFaces[i].Vertex3.Position.ToArray(), 1)[0];
+                // 3点が共有しているValueの数
+                var conNo = n1.DupValue.Intersect(n2.DupValue).Intersect(n3.DupValue).Count();
+
+                if(conNo>0)
+                {
+                    if (!OffsetMap.ContainsKey(prePos1))
+                        OffsetMap.Add(prePos1, postFaces[i].Vertex1.Position - n1.Point.ToV3());
+                    if (!OffsetMap.ContainsKey(prePos2))
+                        OffsetMap.Add(prePos2, postFaces[i].Vertex2.Position - n2.Point.ToV3());
+                    if (!OffsetMap.ContainsKey(prePos3))
+                        OffsetMap.Add(prePos3, postFaces[i].Vertex3.Position - n3.Point.ToV3());
+                }
+                else
+                {
+                    failedFaceIndices.Add(i);
+                }
             }
 
-            
+
             var Vertices = new List<IPXVertex>();
             foreach (var f in TargetMaterial.Faces)
             {
@@ -197,7 +218,8 @@ namespace ApplyMove
             foreach (var v in Vertices)
             {
                 var closest = tree.GetNearestNeighbours(v.Position.ToArray(), 1);
-                v.Position += OffsetMap[closest[0].Point];
+                V3 trans = OffsetMap[closest[0].Point.ToTuple()];
+                v.Position = v.Position + trans;
             }
 
             Utility.Update(args.Host.Connector, pmx, PmxUpdateObject.Vertex);
@@ -210,6 +232,16 @@ namespace ApplyMove
         public static float[] ToArray(this V3 v)
         {
             return new float[] { v.X, v.Y, v.Z };
+        }
+
+        public static (float x,float y, float z) ToTuple(this V3 v)
+        {
+            return (v.X, v.Y, v.Z);
+        }
+
+        public static (float x, float y, float z) ToTuple(this float[] v)
+        {
+            return (v[0], v[1], v[2]);
         }
 
         public static V3 ToV3(this float[] a)
