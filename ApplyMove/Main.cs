@@ -16,7 +16,7 @@ namespace ApplyMove
         {
             get
             {
-                return "プラグイン名";
+                return "材質の頂点移動量を転写";
             }
         }
 
@@ -32,7 +32,7 @@ namespace ApplyMove
         {
             get
             {
-                return "プラグイン説明";
+                return "異なる材質から頂点の移動量を転写する";
             }
         }
 
@@ -41,7 +41,7 @@ namespace ApplyMove
             get
             {
                 // boot時実行, プラグインメニューへの登録, メニュー登録名
-                return new PEPluginOption(false, true, "プラグイン名");
+                return new PEPluginOption(false, true, "材質の頂点移動量を転写");
             }
         }
 
