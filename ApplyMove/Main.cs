@@ -1,5 +1,6 @@
 ﻿using PEPlugin;
 using PEPlugin.Pmx;
+using PEPlugin.SDX;
 using System;
 using System.Linq;
 using System.Windows.Forms;
@@ -75,13 +76,14 @@ namespace ApplyMove
             }
         }
 
-        public class Correspond
-        {
-            public int preMoveVertexID { get; set; }
-            public int postMoveVertexID { get; set; }
-            public PEPlugin.SDX.V3 offset { get; set; }
-        }
-
         CtrlForm ctrlForm;
+    }
+
+    static class Extentions
+    {
+        public static float[] ToArray(this V3 v)
+        {
+            return new float[] { v.X, v.Y, v.Z };
+        }
     }
 }
